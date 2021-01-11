@@ -1,5 +1,5 @@
-print("Starting py2bc")
-if not (str(1.0) == "1"):
+import sys
+if not "tinypy" in sys.version:
     from boot import *
 
 import tokenize,parse,encode
@@ -27,6 +27,8 @@ def _import(name):
     MODULES[name] = g
     exec(code,g)
     return g
+    
+    
 def _init():
     BUILTINS['compile'] = _compile
     BUILTINS['import'] = _import
@@ -50,4 +52,11 @@ def main(src,dest):
     save(dest,r)
 
 if __name__ == '__main__':
+    main(ARGV[1],ARGV[2])
+    main(ARGV[1],ARGV[2])
+    main(ARGV[1],ARGV[2])
+    main(ARGV[1],ARGV[2])
+    main(ARGV[1],ARGV[2])
+    main(ARGV[1],ARGV[2])
+    main(ARGV[1],ARGV[2])
     main(ARGV[1],ARGV[2])

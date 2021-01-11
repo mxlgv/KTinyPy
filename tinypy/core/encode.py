@@ -1,9 +1,9 @@
-import tokenize
+import tokenize, sys
 from tokenize import Token
-if '.' in str(1.0):
+if not "tinypy" in sys.version:
     from boot import *
 
-EOF,ADD,SUB,MUL,DIV,POW,AND,OR,CMP,GET,SET,NUMBER,STRING,GGET,GSET,MOVE,DEF,PASS,JUMP,CALL,RETURN,IF,DEBUG,EQ,LE,LT,DICT,LIST,NONE,LEN,POS,PARAMS,IGET,FILE,NAME,NE,HAS,RAISE,SETJMP,MOD,LSH,RSH,ITER,DEL,REGS = 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44
+EOF,ADD,SUB,MUL,DIV,POW,BITAND,BITOR,CMP,GET,SET,NUMBER,STRING,GGET,GSET,MOVE,DEF,PASS,JUMP,CALL,RETURN,IF,DEBUG,EQ,LE,LT,DICT,LIST,NONE,LEN,POS,PARAMS,IGET,FILE,NAME,NE,HAS,RAISE,SETJMP,MOD,LSH,RSH,ITER,DEL,REGS,BITXOR,IFN,NOT,BITNOT = 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48
 
 class DState:
     def __init__(self,code,fname):
@@ -13,9 +13,9 @@ class DState:
         self.stack,self.out,self._scopei,self.tstack,self._tagi,self.data = [],[('tag','EOF')],0,[],0,{}
         self.error = False
     def begin(self,gbl=False):
-        if len(self.stack): self.stack.append((self.vars,self.r2n,self.n2r,self._tmpi,self.mreg,self.snum,self._globals,self.lineno,self.globals,self.cregs,self.tmpc))
+        if len(self.stack): self.stack.append((self.vars,self.r2n,self.n2r,self._tmpi,self.mreg,self.snum,self._globals,self.lineno,self.globals,self.rglobals,self.cregs,self.tmpc))
         else: self.stack.append(None)
-        self.vars,self.r2n,self.n2r,self._tmpi,self.mreg,self.snum,self._globals,self.lineno,self.globals,self.cregs,self.tmpc = [],{},{},0,0,str(self._scopei),gbl,-1,[],['regs'],0
+        self.vars,self.r2n,self.n2r,self._tmpi,self.mreg,self.snum,self._globals,self.lineno,self.globals,self.rglobals,self.cregs,self.tmpc = [],{},{},0,0,str(self._scopei),gbl,-1,[],[],['regs'],0
         self._scopei += 1
         insert(self.cregs)
     def end(self):
@@ -25,10 +25,12 @@ class DState:
         # This next line forces the encoder to
         # throw an exception if any tmp regs 
         # were leaked within the frame
-        assert(self.tmpc == 0) #REG
+        # assert(self.tmpc == 0) #REG
+        if self.tmpc != 0:
+            print("Warning:\nencode.py contains a register leak\n")
         
         if len(self.stack) > 1:
-            self.vars,self.r2n,self.n2r,self._tmpi,self.mreg,self.snum,self._globals,self.lineno,self.globals,self.cregs,self.tmpc = self.stack.pop()
+            self.vars,self.r2n,self.n2r,self._tmpi,self.mreg,self.snum,self._globals,self.lineno,self.globals,self.rglobals,self.cregs,self.tmpc = self.stack.pop()
         else: self.stack.pop()
 
 
@@ -185,6 +187,12 @@ def imanage(orig,fnc):
     t = Token(orig.pos,'symbol','=',[items[0],orig])
     return fnc(t)
 
+def unary(i,tb,r=None):
+    r = get_tmp(r)
+    b = do(tb)
+    code(i,r,b)
+    if r != b: free_tmp(b)
+    return r
 def infix(i,tb,tc,r=None):
     r = get_tmp(r)
     b,c = do(tb,r),do(tc)
@@ -192,21 +200,17 @@ def infix(i,tb,tc,r=None):
     if r != b: free_tmp(b)
     free_tmp(c)
     return r
-def ss_infix(ss,i,tb,tc,r=None):
-    r = get_tmp(r)
-    r2 = get_tmp()
-    ss = _do_number(ss)
-    t = get_tag()
-    r = do(tb,r)
-    code(EQ,r2,r,ss)
-    code(IF,r2)
-    jump(t,'else')
-    jump(t,'end')
-    tag(t,'else')
-    r = do(tc,r)
-    tag(t,'end')
-    free_tmp(r2) #REG
-    free_tmp(ss) #REG
+def logic_infix(op, tb, tc, _r=None):
+    t = get_tag() 
+    r = do(tb, _r)
+    if _r != r: free_tmp(_r) #REG
+    if op == 'and':   code(IF, r)
+    elif op == 'or':  code(IFN, r)
+    jump(t, 'end')
+    _r = r
+    r = do(tc, _r)
+    if _r != r: free_tmp(_r) #REG
+    tag(t, 'end')
     return r
 
 def _do_none(r=None):
@@ -216,13 +220,13 @@ def _do_none(r=None):
 
 def do_symbol(t,r=None):
     sets = ['=']
-    isets = ['+=','-=','*=','/=']
+    isets = ['+=','-=','*=','/=', '|=', '&=', '^=']
     cmps = ['<','>','<=','>=','==','!=']
     metas = {
         '+':ADD,'*':MUL,'/':DIV,'**':POW,
-        '-':SUB,'and':AND,'or':OR,
+        '-':SUB,
         '%':MOD,'>>':RSH,'<<':LSH,
-        '&':AND,'|':OR,
+        '&':BITAND,'|':BITOR,'^':BITXOR,
     }
     if t.val == 'None': return _do_none(r)
     if t.val == 'True':
@@ -232,8 +236,7 @@ def do_symbol(t,r=None):
     items = t.items
 
     if t.val in ['and','or']:
-        ss = int(t.val == 'or')
-        return ss_infix(ss,metas[t.val],items[0],items[1],r)
+        return logic_infix(t.val, items[0], items[1], r)
     if t.val in isets:
         return imanage(t,do_symbol)
     if t.val == 'is':
@@ -241,7 +244,7 @@ def do_symbol(t,r=None):
     if t.val == 'isnot':
         return infix(CMP,items[0],items[1],r)
     if t.val == 'not':
-        return infix(EQ,Token(t.pos,'number',0),items[0],r)
+        return unary(NOT, items[0], r)
     if t.val == 'in':
         return infix(HAS,items[1],items[0],r)
     if t.val == 'notin':
@@ -406,6 +409,8 @@ def do_call(t,r=None):
 def do_name(t,r=None):
     if t.val in D.vars:
         return do_local(t,r)
+    if t.val not in D.rglobals:
+        D.rglobals.append(t.val)
     r = get_tmp(r)
     c = do_string(t)
     code(GGET,r,c)
@@ -413,6 +418,9 @@ def do_name(t,r=None):
     return r
 
 def do_local(t,r=None):
+    if t.val in D.rglobals:
+        D.error = True
+        tokenize.u_error('UnboundLocalError',D.code,t.pos)
     if t.val not in D.vars:
         D.vars.append(t.val)
     return get_reg(t.val)
@@ -471,82 +479,36 @@ def do_class(t):
     parent = None
     if items[0].type == 'name':
         name = items[0].val
+        parent = Token(tok.pos,'name','object')
     else:
         name = items[0].items[0].val
-        parent = items[0].items[1].val
+        parent = items[0].items[1]
 
     kls = do(Token(t.pos,'dict',0,[]))
+    un_tmp(kls)
     ts = _do_string(name)
     code(GSET,ts,kls)
     free_tmp(ts) #REG
-
-    init,_new = False,[]
-    if parent:
-        _new.append(Token(t.pos,'call',None,[
-            Token(t.pos,'get',None,[
-                Token(t.pos,'name',parent),
-                Token(t.pos,'string','__new__'),
-                ]),
-            Token(t.pos,'name','self'),
-            ]))
-
-    for fc in items[1].items:
-        if fc.type != 'def': continue
-        fn = fc.items[0].val
-        if fn == '__init__': init = True
-        do_def(fc,kls)
-        _new.append(Token(fc.pos,'symbol','=',[
-            Token(fc.pos,'get',None,[
-                Token(fc.pos,'name','self'),
-                Token(fc.pos,'string',fn)]),
-            Token(fc.pos,'call',None,[
-                Token(fc.pos,'name','bind'),
-                Token(fc.pos,'get',None,[
-                    Token(fc.pos,'name',name),
-                    Token(fc.pos,'string',fn)]),
-                Token(fc.pos,'name','self')])
-            ]))
-
-    do_def(Token(t.pos,'def',None,[
-        Token(t.pos,'name','__new__'),
-        Token(t.pos,'list',None,[Token(t.pos,'name','self')]),
-        Token(t.pos,'statements',None,_new)]),kls)
-
-    t = get_tag()
-    rf = fnc(t,'end')
-    D.begin()
-    params = do_local(Token(tok.pos,'name','__params'))
-
-    slf = do_local(Token(tok.pos,'name','self'))
-    code(DICT,slf,0,0)
-
+    
     free_tmp(do(Token(tok.pos,'call',None,[
-        Token(tok.pos,'get',None,[
-            Token(tok.pos,'name',name),
-            Token(tok.pos,'string','__new__')]),
-        Token(tok.pos,'name','self')]))) #REG
+        Token(tok.pos,'name','setmeta'),
+        Token(tok.pos,'reg',kls),
+        parent])))
+        
+    for member in items[1].items:
+        if member.type == 'def': do_def(member,kls)
+        elif member.type == 'symbol' and member.val == '=': do_classvar(member,kls)
+        else: continue
+        
+    free_reg(kls) #REG
 
-    if init:
-        tmp = get_tmp()
-        t3 = _do_string('__init__')
-        code(GET,tmp,slf,t3)
-        t4 = get_tmp()
-        code(CALL,t4,tmp,params)
-        free_tmp(tmp) #REG
-        free_tmp(t3) #REG
-        free_tmp(t4) #REG
-    code(RETURN,slf)
-
-    D.end()
-    tag(t,'end')
-    ts = _do_string('__call__')
-    code(SET,kls,ts,rf)
-    free_tmp(kls) #REG
-    free_tmp(ts) #REG
-
-
-
-
+def do_classvar(t,r):
+    var = do_string(t.items[0])
+    val = do(t.items[1])
+    code(SET,r,var,val)
+    free_reg(var)
+    free_reg(val)
+    
 def do_while(t):
     items = t.items
     t = stack_tag()
@@ -613,6 +575,7 @@ def do_try(t):
     t = get_tag()
     setjmp(t,'except')
     free_tmp(do(items[0])) #REG
+    code(SETJMP,0)
     jump(t,'end')
     tag(t,'except')
     free_tmp(do(items[1].items[1])) #REG
@@ -679,6 +642,7 @@ def do(t,r=None):
     try:
         if t.type in rmap:
             return rmap[t.type](t,r)
+        #if r != None: free_reg(r) #REG
         return fmap[t.type](t)
     except:
         if D.error: raise

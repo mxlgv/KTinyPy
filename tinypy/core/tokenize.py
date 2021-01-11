@@ -12,14 +12,14 @@ def u_error(ctx,s,i):
     r += "     "+" "*x+"^" +'\n'
     raise 'error: '+ctx+'\n'+r
 
-ISYMBOLS = '`-=[];,./~!@$%^&*()+{}:<>?'
+ISYMBOLS = '`-=[];,./~!@$%^&*()+{}:<>?|'
 SYMBOLS = [
     'def','class','yield','return','pass','and','or','not','in','import',
     'is','while','break','for','continue','if','else','elif','try',
     'except','raise','True','False','None','global','del','from',
     '-','+','*','**','/','%','<<','>>',
-    '-=','+=','*=','/=','=','==','!=','<','>',
-    '<=','>=','[',']','{','}','(',')','.',':',',',';','&','|','!',
+    '-=','+=','*=','/=','=','==','!=','<','>', '|=', '&=', '^=',
+    '<=','>=','[',']','{','}','(',')','.',':',',',';','&','|','!', '^'
     ]
 B_BEGIN,B_END = ['[','(','{'],[']',')','}']
 
@@ -35,13 +35,14 @@ def clean(s):
     return s
 
 def tokenize(s):
+    global T
     s = clean(s)
-    try: return do_tokenize(s)
+    T,i,l = TData(),0,len(s)
+    try: return do_tokenize(s,i,l)
     except: u_error('tokenize',s,T.f)
 
-def do_tokenize(s):
+def do_tokenize(s,i,l):
     global T
-    T,i,l = TData(),0,len(s)
     T.f = (T.y,i-T.yi+1)
     while i < l:
         c = s[i]; T.f = (T.y,i-T.yi+1)
@@ -59,6 +60,8 @@ def do_tokenize(s):
         else: u_error('tokenize',s,T.f)
     indent(0)
     r = T.res; T = None
+    #for t in r:
+        #print (t.pos,t.type,t.val)
     return r
 
 def do_nl(s,i,l):
@@ -87,7 +90,6 @@ def indent(v):
         while len(T.indent) > n+1:
             v = T.indent.pop()
             T.add('dedent',v)
-
 
 def do_symbol(s,i,l):
     symbols = []

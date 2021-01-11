@@ -1,18 +1,12 @@
-#include "tp.c"
+#include "tinypy.c"
 
-extern void kolibri_init(tp_vm*);
+extern void init_std_modules(TP);
 
-const char header[]="TinyPy for kolibriOS";
-
-void main(int argc, char *argv[]) {
-    tp_vm *tp = tp_init(argc, argv);
-    kolibri_init(tp);
-    CONSOLE_INIT(header);
-    /* INIT */
-    tp_call(tp,"py2bc","tinypy",tp_None);
-    con_printf("Done");
+int main(int argc, char *argv[]) {
+    tp_vm *tp = tp_init(argc,argv);
+    init_std_modules(tp);
+    tp_ez_call(tp,"py2bc","tinypy",tp_None);
     tp_deinit(tp);
-    kol_exit();
-    return;
+    return(0);
 }
 

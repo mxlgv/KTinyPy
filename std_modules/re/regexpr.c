@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "regexpr.h"
+#include "tinypy.h"
 
 /* The original code blithely assumed that sizeof(short) == 2.  Not
  * always true.  Original instances of "(short)x" were replaced by

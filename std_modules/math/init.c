@@ -1,5 +1,4 @@
 #include "math.c"
-#include "../../tinypy/tp.h"
 
 /*
  * init math module, namely, set its dictionary

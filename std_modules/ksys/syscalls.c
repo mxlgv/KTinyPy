@@ -1,4 +1,4 @@
-#include "tp.h"
+#include "tinypy.h"
 #include <kos32sys.h>
 
 #define GET_NUM_ARG() TP_TYPE(TP_NUMBER).number.val

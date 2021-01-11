@@ -1,6 +1,6 @@
-import tokenize
+import tokenize, sys
 from tokenize import Token
-if '.' in str(1.0):
+if not "tinypy" in sys.version:
     from boot import *
 
 def check(t,*vs):
@@ -29,6 +29,7 @@ class PData:
         self.pos = 0
         self.token = None
         self.stack = []
+        self._terminal = 0
     def init(self):
         global omap,dmap
         omap = cpy(base_dmap)
@@ -43,26 +44,34 @@ class PData:
         else:
             t = Token((0,0),'eof','eof')
         self.token = do(t)
+        
+        self._terminal += 1
+        if check(self.token,'nl','eof',';','dedent'):
+            self._terminal = 0
         return t
+        
+    def terminal(self):
+        if self._terminal > 1:
+            error('invalid statement',self.token)
+
 def error(ctx,t):
-    print t
     tokenize.u_error(ctx,P.s,t.pos)
 
 def nud(t):
     #if 'nud' not in t:
-    #    error('no nud',t)
+        #error('no nud',t)
     return t.nud(t)
 def led(t,left):
     #if 'led' not in t:
-    #    error('no led',t)
+        #error('no led',t)
     return t.led(t,left)
 def get_lbp(t):
     #if 'lbp' not in t:
-    #    error('no lbp',t)
+        #error('no lbp',t)
     return t.lbp
 def get_items(t):
     #if 'items' not in t:
-    #    error('no items',t)
+        #error('no items',t)
     return t.items
 
 def expression(rbp):
@@ -184,22 +193,29 @@ def dict_nud(t):
 def advance(t=None):
     return P.advance(t)
 
+def iblock(items):
+    while check(P.token,'nl',';'): advance()
+    while True:
+        items.append(expression(0))
+        P.terminal()
+        while check(P.token,'nl',';'): advance()
+        if check(P.token,'dedent','eof'): break
+
 def block():
     items = []
     tok = P.token
-
-    while check(P.token,'nl'): advance()
-    if check(P.token,'indent'):
+    
+    if check(P.token,'nl'):
+        while check(P.token,'nl'): advance()
         advance('indent')
-        while not check(P.token,'dedent'):
-            items.append(expression(0))
-            while check(P.token,';','nl'): advance()
+        iblock(items)
         advance('dedent')
     else:
         items.append(expression(0))
         while check(P.token,';'):
             advance(';')
             items.append(expression(0))
+        P.terminal()
     while check(P.token,'nl'): advance()
 
     if len(items) > 1:
@@ -286,12 +302,13 @@ def try_nud(t):
         advance(':')
         b = block()
         items.append(Token(tok.pos,'except','except',[a,b]))
-    if check(P.token,'else'):
-        tok = P.token
-        advance('else')
-        advance(':')
-        b = block()
-        items.append(Token(tok.pos,'else','else',[b]))
+    #commenting this out, i don't think this next bit is valid syntax??
+    #if check(P.token,'else'):
+        #tok = P.token
+        #advance('else')
+        #advance(':')
+        #b = block()
+        #items.append(Token(tok.pos,'else','else',[b]))
     return t
 def prefix_nud(t):
     #bp = 70
@@ -370,8 +387,9 @@ def i_infix(bp,led,*vs):
     for v in vs: base_dmap[v] = {'lbp':bp,'bp':bp,'led':led}
 i_infix(40,infix_led,'<','>','<=','>=','!=','==')
 i_infix(40,infix_is,'is','in')
-i_infix(10,infix_led,'+=','-=','*=','/=')
-i_infix(31,infix_led,'and','&')
+i_infix(10,infix_led,'+=','-=','*=','/=', '&=', '|=', '^=')
+i_infix(32,infix_led,'and','&')
+i_infix(31,infix_led,'^')
 i_infix(30,infix_led,'or','|')
 i_infix(36,infix_led,'<<','>>')
 def i_terms(*vs):
@@ -392,8 +410,8 @@ def do(t):
 def do_module():
     tok = P.token
     items = []
-    while not check(P.token,'eof'):
-        items.append(block())
+    iblock(items)
+    advance('eof')
     if len(items) > 1:
         return Token(tok.pos,'statements',';',items)
     return items.pop()

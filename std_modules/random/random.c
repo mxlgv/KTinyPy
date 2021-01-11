@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <errno.h>
+#include "tinypy.h"
 
 #include <math.h>
 #ifndef M_E
